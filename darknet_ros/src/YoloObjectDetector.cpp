@@ -203,6 +203,7 @@ void YoloObjectDetector::checkForObjectsActionGoalCB() {
     {
       boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexImageCallback_);
       imageHeader_ = imageAction.header;
+      imageHeader_.seq = imageHeader_.seq * (imageActionPtr->id + 1);
       camImageCopy_ = cam_image->image.clone();
     }
     {
