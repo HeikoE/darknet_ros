@@ -196,6 +196,7 @@ class YoloObjectDetector {
   bool enableConsoleOutput_;
   int waitKeyDelay_;
   int fullScreen_;
+  int prevSeq_;
   char* demoPrefix_;
 
   std_msgs::Header imageHeader_;

@@ -202,6 +202,7 @@ void YoloObjectDetector::checkForObjectsActionGoalCB() {
   if (cam_image) {
     {
       boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexImageCallback_);
+      imageHeader_ = imageAction.header;
       camImageCopy_ = cam_image->image.clone();
     }
     {
@@ -488,24 +489,36 @@ void YoloObjectDetector::yolo() {
   while (!demoDone_) {
     buffIndex_ = (buffIndex_ + 1) % 3;
     fetch_thread = std::thread(&YoloObjectDetector::fetchInThread, this);
-    detect_thread = std::thread(&YoloObjectDetector::detectInThread, this);
-    if (!demoPrefix_) {
-      fps_ = 1. / (what_time_is_it_now() - demoTime_);
-      demoTime_ = what_time_is_it_now();
-      if (viewImage_) {
-        displayInThread(0);
+
+    if(prevSeq_ != headerBuff_[buffIndex_].seq){
+
+      detect_thread = std::thread(&YoloObjectDetector::detectInThread, this);
+
+      if (!demoPrefix_) {
+        fps_ = 1. / (what_time_is_it_now() - demoTime_);
+        demoTime_ = what_time_is_it_now();
+        if (viewImage_) {
+          displayInThread(0);
+        } else {
+          generate_image(buff_[(buffIndex_ + 1) % 3], ipl_);
+        }
+        publishInThread();
       } else {
-        generate_image(buff_[(buffIndex_ + 1) % 3], ipl_);
+        char name[256];
+        sprintf(name, "%s_%08d", demoPrefix_, count);
+        save_image(buff_[(buffIndex_ + 1) % 3], name);
       }
-      publishInThread();
-    } else {
-      char name[256];
-      sprintf(name, "%s_%08d", demoPrefix_, count);
-      save_image(buff_[(buffIndex_ + 1) % 3], name);
+
+      prevSeq_ = headerBuff_[buffIndex_].seq;
+
+      fetch_thread.join();
+      detect_thread.join();
+      ++count;
     }
-    fetch_thread.join();
-    detect_thread.join();
-    ++count;
+    else{
+       fetch_thread.join();
+    }
+
     if (!isNodeRunning()) {
       demoDone_ = true;
     }
