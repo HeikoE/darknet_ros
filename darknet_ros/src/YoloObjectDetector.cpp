@@ -503,7 +503,6 @@ void YoloObjectDetector::yolo() {
         } else {
           generate_image(buff_[(buffIndex_ + 1) % 3], ipl_);
         }
-        publishInThread();
       } else {
         char name[256];
         sprintf(name, "%s_%08d", demoPrefix_, count);
@@ -515,6 +514,7 @@ void YoloObjectDetector::yolo() {
       fetch_thread.join();
       detect_thread.join();
       ++count;
+      publishInThread();
     }
     else{
        fetch_thread.join();
