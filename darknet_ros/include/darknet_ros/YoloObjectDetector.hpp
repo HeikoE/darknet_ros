@@ -16,6 +16,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <memory>
+#include <condition_variable>
 
 // ROS
 #include <actionlib/server/simple_action_server.h>
@@ -36,6 +38,7 @@
 #include <darknet_ros_msgs/BoundingBox.h>
 #include <darknet_ros_msgs/BoundingBoxes.h>
 #include <darknet_ros_msgs/CheckForObjectsAction.h>
+#include <darknet_ros_msgs/CheckForObjects.h>
 #include <darknet_ros_msgs/ObjectCount.h>
 
 // Darknet.
@@ -115,10 +118,17 @@ class YoloObjectDetector {
   void checkForObjectsActionPreemptCB();
 
   /*!
+   * Check for objects service callback.
+   */
+  bool checkForObjectsServiceCB(darknet_ros_msgs::CheckForObjects::Request &req, darknet_ros_msgs::CheckForObjects::Response &res);
+
+  /*!
    * Check if a preempt for the check for objects action has been requested.
    * @return false if preempt has been requested or inactive.
    */
   bool isCheckingForObjects() const;
+
+  bool isCheckingInService();
 
   /*!
    * Publishes the detection image.
@@ -139,6 +149,14 @@ class YoloObjectDetector {
 
   //! Check for objects action server.
   CheckForObjectsActionServerPtr checkForObjectsActionServer_;
+
+  //! Check for objects service server.
+  ros::ServiceServer checkForObjectsServiceServer_;
+  darknet_ros_msgs::CheckForObjects::Response serviceResponse_;
+  std::mutex mutexServiceResponse_;
+  bool serviceRunning_ = false;
+  std::mutex mutexServiceRunning_;
+  std::condition_variable serviceCV_;
 
   //! Advertise and subscribe to image topics.
   image_transport::ImageTransport imageTransport_;
