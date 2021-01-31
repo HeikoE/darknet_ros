@@ -159,6 +159,7 @@ void YoloObjectDetector::init() {
   std::string checkForObjectsServiceName;
   nodeHandle_.param("services/camera_reading/topic", checkForObjectsServiceName, std::string("check_for_objects"));
   checkForObjectsServiceServer_ = nodeHandle_.advertiseService(checkForObjectsServiceName, &YoloObjectDetector::checkForObjectsServiceCB, this);
+  srvSeq_ = 1;
 }
 
 void YoloObjectDetector::cameraCallback(const sensor_msgs::ImageConstPtr& msg) {
@@ -246,7 +247,8 @@ bool YoloObjectDetector::checkForObjectsServiceCB(darknet_ros_msgs::CheckForObje
     {
       boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexImageCallback_);
       imageHeader_ = req.image.header;
-      imageHeader_.seq = imageHeader_.seq * (req.id + 1);
+      imageHeader_.seq = srvSeq_;
+      srvSeq_++;
       camImageCopy_ = cam_image->image.clone();
     }
     {
