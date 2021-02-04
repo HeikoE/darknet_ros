@@ -154,6 +154,12 @@ void YoloObjectDetector::init() {
   checkForObjectsActionServer_->registerGoalCallback(boost::bind(&YoloObjectDetector::checkForObjectsActionGoalCB, this));
   checkForObjectsActionServer_->registerPreemptCallback(boost::bind(&YoloObjectDetector::checkForObjectsActionPreemptCB, this));
   checkForObjectsActionServer_->start();
+
+  // Service servers.
+  std::string checkForObjectsServiceName;
+  nodeHandle_.param("services/camera_reading/topic", checkForObjectsServiceName, std::string("check_for_objects"));
+  checkForObjectsServiceServer_ = nodeHandle_.advertiseService(checkForObjectsServiceName, &YoloObjectDetector::checkForObjectsServiceCB, this);
+  srvSeq_ = 1;
 }
 
 void YoloObjectDetector::cameraCallback(const sensor_msgs::ImageConstPtr& msg) {
@@ -225,8 +231,57 @@ void YoloObjectDetector::checkForObjectsActionPreemptCB() {
   checkForObjectsActionServer_->setPreempted();
 }
 
+bool YoloObjectDetector::checkForObjectsServiceCB(darknet_ros_msgs::CheckForObjects::Request &req, darknet_ros_msgs::CheckForObjects::Response &res) {
+  ROS_DEBUG("[YoloObjectDetector] Start check for objects service.");
+
+  cv_bridge::CvImagePtr cam_image;
+
+  try {
+    cam_image = cv_bridge::toCvCopy(req.image, sensor_msgs::image_encodings::BGR8);
+  } catch (cv_bridge::Exception& e) {
+    ROS_ERROR("cv_bridge exception: %s", e.what());
+    return false;
+  }
+
+  if (cam_image) {
+    {
+      boost::unique_lock<boost::shared_mutex> lockImageCallback(mutexImageCallback_);
+      imageHeader_ = req.image.header;
+      imageHeader_.seq = srvSeq_;
+      srvSeq_++;
+      camImageCopy_ = cam_image->image.clone();
+    }
+    {
+      std::unique_lock<std::mutex> lockServiceRunning {mutexServiceRunning_};
+      serviceRunning_ = true;
+    }
+    {
+      boost::unique_lock<boost::shared_mutex> lockImageStatus(mutexImageStatus_);
+      imageStatus_ = true;
+    }
+    frameWidth_ = cam_image->image.size().width;
+    frameHeight_ = cam_image->image.size().height;
+
+    {
+      std::unique_lock<std::mutex> lockWaitForResult {mutexServiceResponse_};
+      serviceCV_.wait(lockWaitForResult);
+      res = serviceResponse_;
+    }
+  }
+  {
+      std::lock_guard<std::mutex> lockServiceRunning {mutexServiceRunning_};
+      serviceRunning_ = false;
+  }
+  return true;
+}
+
 bool YoloObjectDetector::isCheckingForObjects() const {
   return (ros::ok() && checkForObjectsActionServer_->isActive() && !checkForObjectsActionServer_->isPreemptRequested());
+}
+
+bool YoloObjectDetector::isCheckingInService() {
+  std::lock_guard<std::mutex> lk {mutexServiceRunning_};
+  return (ros::ok() && serviceRunning_);
 }
 
 bool YoloObjectDetector::publishDetectionImage(const cv::Mat& detectionImage) {
@@ -605,6 +660,15 @@ void* YoloObjectDetector::publishInThread() {
     objectsActionResult.id = buffId_[0];
     objectsActionResult.bounding_boxes = boundingBoxesResults_;
     checkForObjectsActionServer_->setSucceeded(objectsActionResult, "Send bounding boxes.");
+  }
+  if (isCheckingInService()) {
+    ROS_DEBUG("[YoloObjectDetector] check for objects in image (service).");
+    {
+      std::unique_lock<std::mutex> lk {mutexServiceResponse_};
+      serviceResponse_.id = static_cast<darknet_ros_msgs::CheckForObjects::Response::_id_type>(buffId_[0]);
+      serviceResponse_.bounding_boxes = boundingBoxesResults_;
+    }
+    serviceCV_.notify_all();
   }
   boundingBoxesResults_.bounding_boxes.clear();
   for (int i = 0; i < numClasses_; i++) {
