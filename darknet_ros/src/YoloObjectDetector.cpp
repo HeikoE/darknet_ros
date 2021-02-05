@@ -177,8 +177,7 @@ bool YoloObjectDetector::checkForObjectsServiceCB(darknet_ros_msgs::CheckForObje
   frameWidth_ = cam_image->image.size().width;
   frameHeight_ = cam_image->image.size().height;
 
-  darknet_ros_msgs::BoundingBoxes bb_msg;
-  processImage(cam_image);
+  darknet_ros_msgs::BoundingBoxes bb_msg = processImage(cam_image);
   bb_msg.header.stamp = ros::Time::now();
   bb_msg.header.frame_id = "detection";
   bb_msg.image_header = req.image.header;
@@ -197,33 +196,36 @@ darknet_ros_msgs::BoundingBoxes YoloObjectDetector::processImage(const cv_bridge
   cv::Mat camImageCopy = cam_image->image.clone();
   IplImage* ROS_img = new IplImage(camImageCopy);
   image img;
-  img = ipl_to_image(ROS_img);                // @PATRICK HIER LÄUFT ES VOLL (original war  ipl_into_image(ROS_img, img); -->stürtzt aber bei mir ab.
-//  image img_letter = letterbox_image(img, net_->w, net_->h);
+  img = ipl_to_image(ROS_img);
+  image img_letter = letterbox_image(img, net_->w, net_->h);
 
   //detect
-//  layer l = net_->layers[net_->n - 1];
-//  float* X = img_letter.data;
-//  network_predict(net_, X);
-//  rememberNetwork(net_);
+  layer l = net_->layers[net_->n - 1];
+  float* X = img_letter.data;
+  network_predict(net_, X);
+  rememberNetwork(net_);
 
-//  detection* dets;
-//  int nboxes = 0;
-//  dets = avgPredictions(net_, &nboxes, img.w, img.h);
-//  do_nms_obj(dets, nboxes, l.classes, 0.4f);
+  detection* dets;
+  int nboxes = 0;
+  dets = avgPredictions(net_, &nboxes, img.w, img.h);
+  do_nms_obj(dets, nboxes, l.classes, 0.4f);
 
-//  std::vector<RosBox_> roi_boxes = extractDetectionROIs(dets, nboxes);
+  //convert into ROS message
+  std::vector<RosBox_> roi_boxes = extractDetectionROIs(dets, nboxes);
+  darknet_ros_msgs::BoundingBoxes bb_msg = fillROIsIntoROSmsg(roi_boxes);
 
-//  free_detections(dets, nboxes);
+  if(show_opencv_ || publish_detection_image_){
+    cv::Mat visu_img = drawDetections(camImageCopy, bb_msg);
 
-  darknet_ros_msgs::BoundingBoxes bb_msg; // = fillROIsIntoROSmsg(roi_boxes);
+    if(show_opencv_) visualizeCVImage(visu_img, "Yolo_Detections");
+    if(publish_detection_image_) publishDetectionImage(visu_img);
+  }
 
-//  if(show_opencv_ || publish_detection_image_){
-//    cv::Mat visu_img = drawDetections(camImageCopy, bb_msg);
-
-//    if(show_opencv_) visualizeCVImage(visu_img, "Yolo_Detections");
-//    if(publish_detection_image_) publishDetectionImage(visu_img);
-//  }
-
+  //cleanup
+  free_image(img);
+  free_detections(dets, nboxes);
+  delete ROS_img;
+  delete X;
 
   return bb_msg;
 }
