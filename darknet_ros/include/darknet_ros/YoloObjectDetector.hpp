@@ -77,17 +77,20 @@ typedef struct {
   std_msgs::Header header;
 } IplImageWithHeader_;
 
+
 class YoloObjectDetector {
+
  public:
   /*!
    * Constructor.
    */
   explicit YoloObjectDetector(ros::NodeHandle nh);
 
+
   /*!
-   * Destructor.
+   * \brief yolo
    */
-  ~YoloObjectDetector();
+  void workerYolo();
 
  private:
   /*!
@@ -113,28 +116,69 @@ class YoloObjectDetector {
   void checkForObjectsActionGoalCB();
 
   /*!
-   * Check for objects action preempt callback.
-   */
-  void checkForObjectsActionPreemptCB();
-
-  /*!
    * Check for objects service callback.
    */
   bool checkForObjectsServiceCB(darknet_ros_msgs::CheckForObjects::Request &req, darknet_ros_msgs::CheckForObjects::Response &res);
 
   /*!
-   * Check if a preempt for the check for objects action has been requested.
-   * @return false if preempt has been requested or inactive.
+   * \brief processes an image
+   * \param cam_image
+   * \return found bounding boxes
    */
-  bool isCheckingForObjects() const;
-
-  bool isCheckingInService();
+  darknet_ros_msgs::BoundingBoxes processImage(const cv_bridge::CvImagePtr& cam_image);
 
   /*!
-   * Publishes the detection image.
-   * @return true if successful.
+   * \brief extracts the ROI information of the detections
+   * \param dets
+   * \param nboxes
+   * \return ROI boxes
    */
-  bool publishDetectionImage(const cv::Mat& detectionImage);
+  std::vector<RosBox_> extractDetectionROIs(const detection *dets, const int nboxes);
+
+  /*!
+   * \brief fills the ROS information into a ROS msg
+   * \param roi_boxes
+   * \return ROS msg
+   */
+  darknet_ros_msgs::BoundingBoxes fillROIsIntoROSmsg(const std::vector<RosBox_> &roi_boxes);
+
+  /*!
+   * \brief drawDetections
+   * \param img
+   * \param boxes
+   * \return img with bounding boxes
+   */
+  cv::Mat drawDetections(const cv::Mat &img, const darknet_ros_msgs::BoundingBoxes &boxes);
+
+  /*!
+   * \brief visualize a cv image in a with adjustable image size
+   * \param img
+   * \param window_name
+   * \param resize_img_height
+   */
+  void visualizeCVImage(const cv::Mat &img, const std::string &window_name);
+
+  /*!
+   * \brief publish number of found objects in image
+   * \param num_det
+   */
+  void publishNumberOfDetections(const int num_det);
+
+  /*!
+   * \brief publishDetectionImage
+   * \param cv_img
+   */
+  void publishDetectionImage(const cv::Mat& cv_img);
+
+  //! Yolo Functions
+  detection* avgPredictions(network* net, int* nboxes, int img_width, int img_height);
+
+  int sizeNetwork(network* net);
+
+  void rememberNetwork(network* net);
+
+  void setupNetwork(char* cfgfile, char* weightfile, char* datafile, float thresh, int classes, int avg_frames, float hier);
+
 
   //! Using.
   using CheckForObjectsActionServer = actionlib::SimpleActionServer<darknet_ros_msgs::CheckForObjectsAction>;
@@ -143,8 +187,12 @@ class YoloObjectDetector {
   //! ROS node handle.
   ros::NodeHandle nodeHandle_;
 
-  //! Class labels.
+  //! Number of classes.
   int numClasses_;
+
+  //! ROS Paremeter
+  bool show_opencv_;
+  bool publish_detection_image_;
   std::vector<std::string> classLabels_;
 
   //! Check for objects action server.
@@ -152,11 +200,6 @@ class YoloObjectDetector {
 
   //! Check for objects service server.
   ros::ServiceServer checkForObjectsServiceServer_;
-  darknet_ros_msgs::CheckForObjects::Response serviceResponse_;
-  std::mutex mutexServiceResponse_;
-  bool serviceRunning_ = false;
-  std::mutex mutexServiceRunning_;
-  std::condition_variable serviceCV_;
 
   //! Advertise and subscribe to image topics.
   image_transport::ImageTransport imageTransport_;
@@ -165,102 +208,24 @@ class YoloObjectDetector {
   image_transport::Subscriber imageSubscriber_;
   ros::Publisher objectPublisher_;
   ros::Publisher boundingBoxesPublisher_;
-
-  //! Detected objects.
-  std::vector<std::vector<RosBox_> > rosBoxes_;
-  std::vector<int> rosBoxCounter_;
-  darknet_ros_msgs::BoundingBoxes boundingBoxesResults_;
+  ros::Publisher detectionImagePublisher_;
 
   //! Camera related parameters.
   int frameWidth_;
   int frameHeight_;
 
-  //! Publisher of the bounding box image.
-  ros::Publisher detectionImagePublisher_;
-
-  // Yolo running on thread.
-  std::thread yoloThread_;
-
-  // Darknet.
-  char** demoNames_;
-  image** demoAlphabet_;
+  //! Darknet.
   int demoClasses_;
-
   network* net_;
-  std_msgs::Header headerBuff_[3];
-  image buff_[3];
-  image buffLetter_[3];
-  int buffId_[3];
-  int buffIndex_ = 0;
-  IplImage* ipl_;
-  float fps_ = 0;
+
   float demoThresh_ = 0;
   float demoHier_ = .5;
-  int running_ = 0;
 
-  int demoDelay_ = 0;
   int demoFrame_ = 3;
   float** predictions_;
   int demoIndex_ = 0;
-  int demoDone_ = 0;
-  float* lastAvg2_;
-  float* lastAvg_;
   float* avg_;
   int demoTotal_ = 0;
-  double demoTime_;
-
-  RosBox_* roiBoxes_;
-  bool viewImage_;
-  bool enableConsoleOutput_;
-  int waitKeyDelay_;
-  int fullScreen_;
-  int prevSeq_;
-  uint srvSeq_;
-  char* demoPrefix_;
-
-  std_msgs::Header imageHeader_;
-  cv::Mat camImageCopy_;
-  boost::shared_mutex mutexImageCallback_;
-
-  bool imageStatus_ = false;
-  boost::shared_mutex mutexImageStatus_;
-
-  bool isNodeRunning_ = true;
-  boost::shared_mutex mutexNodeStatus_;
-
-  int actionId_;
-  boost::shared_mutex mutexActionStatus_;
-
-  // double getWallTime();
-
-  int sizeNetwork(network* net);
-
-  void rememberNetwork(network* net);
-
-  detection* avgPredictions(network* net, int* nboxes);
-
-  void* detectInThread();
-
-  void* fetchInThread();
-
-  void* displayInThread(void* ptr);
-
-  void* displayLoop(void* ptr);
-
-  void* detectLoop(void* ptr);
-
-  void setupNetwork(char* cfgfile, char* weightfile, char* datafile, float thresh, char** names, int classes, int delay, char* prefix,
-                    int avg_frames, float hier, int w, int h, int frames, int fullscreen);
-
-  void yolo();
-
-  IplImageWithHeader_ getIplImageWithHeader();
-
-  bool getImageStatus(void);
-
-  bool isNodeRunning(void);
-
-  void* publishInThread();
 };
 
 } /* namespace darknet_ros*/
