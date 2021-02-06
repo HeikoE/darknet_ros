@@ -382,22 +382,20 @@ cv::Mat YoloObjectDetector::drawDetections(const cv::Mat &img, const darknet_ros
 
   for(const auto& box : boxes.bounding_boxes){
 
-    int thickness = 2;
-    double font_scale = 0.5;
-    //bounding box
+    int thickness = 1;
+    double font_scale = 0.6;
+
     int xmin = static_cast<int>(box.xmin) * width / img.cols;
     int xmax = static_cast<int>(box.xmax) * width / img.cols;
     int ymin = static_cast<int>(box.ymin) * height / img.rows;
-    int ymax = static_cast<int>(box.xmax) * height / img.rows;
-
-
+    int ymax = static_cast<int>(box.ymax) * height / img.rows;
 
     cv::Point pt1 = cv::Point(xmax, ymax);
     cv::Point pt2 = cv::Point(xmin, ymin);
     cv::rectangle(img_sized, pt1, pt2, cv::Scalar(255,0,0), thickness);
 
-    std::string class_name = box.Class;
-    cv::Point pt_text = cv::Point(xmin, ymin-10);
+    std::string class_name = box.Class + " " + std::to_string(static_cast<int>(box.probability*100)) +"%";
+    cv::Point pt_text = cv::Point(xmin, ymin-5);
     cv::putText(img_sized, class_name, pt_text, cv::FONT_HERSHEY_SIMPLEX, font_scale, cv::Scalar(255,0,0), thickness);
   }
 
