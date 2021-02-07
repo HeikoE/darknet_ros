@@ -100,9 +100,14 @@ class YoloObjectDetector {
   bool readParameters();
 
   /*!
-   * Initialize the ROS connections.
+   * Initialize the yolo net.
    */
-  void init();
+  void initNetwork();
+
+  /*!
+   * \brief initialize ROS connections
+   */
+  void initializeROSConnections();
 
   /*!
    * Callback of camera.
@@ -194,6 +199,10 @@ class YoloObjectDetector {
   bool show_opencv_;
   bool publish_detection_image_;
   std::vector<std::string> classLabels_;
+  double detection_threshold_;
+  std::string weights_file_;
+  std::string model_file_;
+
 
   //! Check for objects action server.
   CheckForObjectsActionServerPtr checkForObjectsActionServer_;

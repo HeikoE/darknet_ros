@@ -34,7 +34,9 @@ YoloObjectDetector::YoloObjectDetector(ros::NodeHandle nh)
     ros::requestShutdown();
   }
 
-  init();
+  initializeROSConnections();
+
+  initNetwork();
 
   ROS_INFO("Successfully started [YoloObjectDetector] Node.");
 }
@@ -43,57 +45,16 @@ YoloObjectDetector::YoloObjectDetector(ros::NodeHandle nh)
 bool YoloObjectDetector::readParameters() {
 
   // Set vector sizes.
-  return nodeHandle_.getParam("yolo_model/detection_classes/names", classLabels_) &&
-      nodeHandle_.getParam("show_opencv", show_opencv_) &&
-      nodeHandle_.getParam("publish_detection_image", publish_detection_image_);
+  return nodeHandle_.getParam("detection_classes", classLabels_) &&
+          nodeHandle_.getParam("show_opencv", show_opencv_) &&
+          nodeHandle_.getParam("publish_detection_image", publish_detection_image_) &&
+          nodeHandle_.getParam("detection_threshold", detection_threshold_) &&
+          nodeHandle_.getParam("weights_file", weights_file_) &&
+          nodeHandle_.getParam("model_file", model_file_);
 }
 
 
-void YoloObjectDetector::init() {
-  ROS_INFO("[YoloObjectDetector] init().");
-
-  numClasses_ = static_cast<int>(classLabels_.size());
-
-  // Initialize deep network of darknet.
-  std::string weightsPath;
-  std::string configPath;
-  std::string dataPath;
-  std::string configModel;
-  std::string weightsModel;
-
-  // Threshold of object detection.
-  float thresh;
-  nodeHandle_.param("yolo_model/threshold/value", thresh, 0.3f);
-
-  // Path to weights file.
-  nodeHandle_.param("yolo_model/weight_file/name", weightsModel, std::string("yolov2-tiny.weights"));
-  nodeHandle_.param("weights_path", weightsPath, std::string("/default"));
-  weightsPath += "/" + weightsModel;
-  weights = new char[weightsPath.length() + 1];
-  strcpy(weights, weightsPath.c_str());
-
-  // Path to config file.
-  nodeHandle_.param("yolo_model/config_file/name", configModel, std::string("yolov2-tiny.cfg"));
-  nodeHandle_.param("config_path", configPath, std::string("/default"));
-  configPath += "/" + configModel;
-  cfg = new char[configPath.length() + 1];
-  strcpy(cfg, configPath.c_str());
-
-  // Path to data folder.
-  dataPath = darknetFilePath_;
-  dataPath += "/data";
-  data = new char[dataPath.length() + 1];
-  strcpy(data, dataPath.c_str());
-
-  // Get classes.
-  detectionNames = (char**)realloc((void*)detectionNames, static_cast<size_t>(numClasses_ + 1) * sizeof(char*));
-  for (size_t i = 0; i < static_cast<size_t>(numClasses_); i++) {
-    detectionNames[i] = new char[classLabels_[i].length() + 1];
-    strcpy(detectionNames[i], classLabels_[i].c_str());
-  }
-
-  // Load network.
-  setupNetwork(cfg, weights, data, thresh, numClasses_, 1, 0.5);
+void YoloObjectDetector::initializeROSConnections(){
 
   // Initialize publisher and subscriber.
   imageSubscriber_ = imageTransport_.subscribe("/camera/image_raw", 1, &YoloObjectDetector::cameraCallback, this);
@@ -106,6 +67,40 @@ void YoloObjectDetector::init() {
   checkForObjectsActionServer_->start();
   // Service servers.
   checkForObjectsServiceServer_ = nodeHandle_.advertiseService("check_for_objects", &YoloObjectDetector::checkForObjectsServiceCB, this);
+}
+
+
+void YoloObjectDetector::initNetwork() {
+  ROS_INFO("[YoloObjectDetector] init().");
+
+  //Number of classes
+  numClasses_ = static_cast<int>(classLabels_.size());
+
+  // Model config
+  cfg = new char[model_file_.length() + 1];
+  strcpy(cfg, model_file_.c_str());
+
+  // Model weights
+  weights = new char[weights_file_.length() + 1];
+  strcpy(weights, weights_file_.c_str());
+
+  // Path to data folder.
+  std::string dataPath;
+  dataPath = darknetFilePath_;
+  dataPath += "/data";
+  data = new char[dataPath.length() + 1];
+  strcpy(data, dataPath.c_str());
+
+  // Get classes.
+  detectionNames = (char**)realloc((void*)detectionNames, static_cast<size_t>(numClasses_ + 1) * sizeof(char*));
+  for (size_t i = 0; i < static_cast<size_t>(numClasses_); i++) {
+    detectionNames[i] = new char[classLabels_[i].length() + 1];
+    strcpy(detectionNames[i], classLabels_[i].c_str());
+    std::cout<< classLabels_.at(i) << std::endl;
+  }
+
+  // Load network.
+  setupNetwork(cfg, weights, data, static_cast<float>(detection_threshold_), numClasses_, 1, 0.5);
 }
 
 
